@@ -16,6 +16,7 @@ const UNITE = {
   couleurPrincipale: "#0e2340",            // bleu marine
   couleurAccent: "#d4a017",                // or
   proximiteKm: 5,                          // alerte « proche d'un foyer » en dessous de cette distance
+  demoAuto: true,      // version de présentation : charge des données FICTIVES à la première visite
   titreSite: "VIGIE · Cartographie géospatiale de l'insécurité – PNH",   // titre affiché dans l'onglet du navigateur
   version: "1.2"
 };

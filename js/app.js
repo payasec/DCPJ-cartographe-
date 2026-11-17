@@ -20,7 +20,8 @@ const SEED_FOYERS = FOYERS_INITIAUX.map((f,i)=>Object.assign({id:"F-NORD-"+Strin
 const KEY="vigie_geo_v1";
 let DB={alerts:[],foyers:SEED_FOYERS.slice(),seq:1};
 let storageOK=true;
-try{ const raw=localStorage.getItem(KEY); if(raw){ const d=JSON.parse(raw); if(d&&d.alerts) DB=d; } }catch(e){ storageOK=false; }
+let FIRST_RUN=true;
+try{ const raw=localStorage.getItem(KEY); if(raw){ FIRST_RUN=false; const d=JSON.parse(raw); if(d&&d.alerts) DB=d; } }catch(e){ storageOK=false; }
 if(!Array.isArray(DB.zones)) DB.zones=[];
 /* Paramètres de l'unité : valeurs du fichier de configuration, remplacées par celles saisies dans l'onglet ⚙ */
 const CFG_KEY="vigie_cfg_v1";
@@ -220,7 +221,7 @@ function renderDash(){
   $("kZR").textContent=DB.zones.filter(z=>z.level==="rouge").length;
   $("kHS").textContent=detectHotspots(30,+$("aEps").value||2,+$("aMin").value||3).length;
 }
-function renderAll(){setTimeout(()=>{try{renderCmd();}catch(e){}},0);DB.zones.forEach(z=>{if(!z.dept){const c=polyCentroid(z.coords);z.dept=deptOf(c[0],c[1]);}});renderZones();renderAnalysis();if(typeof fillPlaces==="function")fillPlaces();DB.foyers.forEach(f=>{if(!f.dept)f.dept=deptOf(f.lat,f.lon);});renderMap();renderList();renderFoyers();renderDash();}
+function renderAll(){try{updateDemoBadge();}catch(e){}setTimeout(()=>{try{renderCmd();}catch(e){}},0);DB.zones.forEach(z=>{if(!z.dept){const c=polyCentroid(z.coords);z.dept=deptOf(c[0],c[1]);}});renderZones();renderAnalysis();if(typeof fillPlaces==="function")fillPlaces();DB.foyers.forEach(f=>{if(!f.dept)f.dept=deptOf(f.lat,f.lon);});renderMap();renderList();renderFoyers();renderDash();}
 
 /* ===================== Actions ===================== */
 function highlight(id){document.querySelectorAll(".card.active").forEach(e=>e.classList.remove("active"));const c=$("c-"+id);if(c){c.classList.add("active");c.scrollIntoView({block:"nearest",behavior:"smooth"});}}
@@ -351,7 +352,17 @@ $("fImp").onchange=async e=>{const file=e.target.files[0];e.target.value="";if(!
 };
 
 /* ===================== Démonstration ===================== */
-$("bDemo").onclick=()=>{
+/* Groupes armés FICTIFS pour la démonstration (aucune donnée réelle) */
+function addDemoFoyers(){if(DB.foyers.some(f=>f.demo))return;
+  const D=[["Croix-des-Bouquets","A",["vol","enlev","taxe"],2.5],["Port-au-Prince","B",["enlev","assassinat","drogue"],2],["Saint-Marc","C",["vol","taxe"],1.8],
+           ["Mirebalais","D",["vol","foncier"],1.5],["Cap-Haïtien","E",["foncier","vol"],1.5],["Limonade","F",["foncier"],1.2],["Gonaïves","G",["drogue","vol"],1.5]];
+  D.forEach(([pl,l,cats,rad],i)=>{const r=placeLookup(pl);if(!r)return;const lat=r.lat+.012*Math.cos(i),lon=r.lon+.012*Math.sin(i);
+    DB.foyers.push({id:"F-DEMO-"+l,zone:"[DÉMO] Groupe armé fictif "+l+" – "+r.name,lat,lon,dept:deptOf(lat,lon),chef:"— (donnée fictive)",membres:"— (donnée fictive)",
+      act:"Exemple fictif utilisé pour la démonstration du logiciel.",cats,rad,src:"Démonstration",approx:true,demo:true});});}
+function updateDemoBadge(){const on=DB.alerts.some(a=>a.demo)||DB.zones.some(z=>z.demo)||DB.foyers.some(f=>f.demo);
+  const p=document.getElementById("demoPill");if(p)p.style.display=on?"":"none";
+  document.querySelectorAll(".c-class").forEach(e=>e.textContent=on?"DÉMONSTRATION · DONNÉES FICTIVES · "+CFG.classification:CFG.classification);}
+$("bDemo").onclick=()=>{addDemoFoyers();
   const S=[["Publication avec fusils d'assaut exhibés","armes","elevee","Cap-Haitien"],["Signalement d'enlèvement sur la RN1","enlev","critique","Limbe"],["Vente de stupéfiants annoncée sur WhatsApp","drogue","moyenne","Port-au-Prince"],
     ["Vidéo d'un gang revendiquant une attaque","gang","critique","Croix des Bouquets"],["Appel : coups de feu près du marché","armes","elevee","Saint-Marc"],["Agression sexuelle signalée","viol","elevee","Gonaives"],
     ["Barrage armé, taxation des passants","gang","elevee","Milot"],["Menaces publiées contre des habitants","gang","moyenne","Limonade"],["Annonce de vente d'armes","armes","critique","Petion-Ville"],
@@ -370,7 +381,7 @@ $("bDemo").onclick=()=>{
   Z.forEach(([nm,lv,ty,pl,s])=>{const r=placeLookup(pl);if(!r)return;const coords=[];for(let i=0;i<7;i++){const an=i/7*2*Math.PI,k=s*(.75+Math.random()*.5);coords.push([+(r.lat+k*Math.sin(an)).toFixed(5),+(r.lon+k*1.1*Math.cos(an)).toFixed(5)]);}
     const c=polyCentroid(coords);DB.zones.push({id:"Z-"+Date.now().toString(36).toUpperCase()+Math.floor(Math.random()*1e3),name:nm,level:lv,type:ty,desc:"Zone fictive créée pour tester l'application.",src:"Démonstration",date:new Date().toISOString().slice(0,10),coords,dept:deptOf(c[0],c[1]),demo:true});});
   save();renderAll();map.fitBounds(HT_BOUNDS);toast(n+" alertes et 3 zones de démonstration ajoutées (marquées DÉMO)");};
-$("bDemoDel").onclick=()=>{const n=DB.alerts.filter(a=>a.demo).length,nz=DB.zones.filter(z=>z.demo).length;DB.alerts=DB.alerts.filter(a=>!a.demo);DB.zones=DB.zones.filter(z=>!z.demo);save();renderAll();toast(`${n} alerte(s) et ${nz} zone(s) de démo retirées`);};
+$("bDemoDel").onclick=()=>{const n=DB.alerts.filter(a=>a.demo).length,nz=DB.zones.filter(z=>z.demo).length;DB.alerts=DB.alerts.filter(a=>!a.demo);DB.zones=DB.zones.filter(z=>!z.demo);DB.foyers=DB.foyers.filter(f=>!f.demo);save();renderAll();toast(`${n} alerte(s) et ${nz} zone(s) de démo retirées`);};
 
 /* ===================== Zones d'insécurité ===================== */
 let draft={pts:[],shape:null,vx:L.layerGroup().addTo(map)};
