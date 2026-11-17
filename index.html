@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VIGIE · Cartographie géospatiale de l'insécurité – PNH</title>
+<meta name="robots" content="noindex, nofollow">
+<meta name="description" content="Cartographie géospatiale des alertes, des zones d'insécurité et des foyers de violence – DCPJ, Police Nationale d'Haïti.">
+<meta property="og:title" content="VIGIE · Cartographie géospatiale de l'insécurité – PNH">
+<meta property="og:description" content="Alertes géolocalisées · Zones d'insécurité · Foyers de violence · Mode Commandement">
+<meta name="theme-color" content="#0e2340">
+<link rel="icon" href="images/logo-dcpj.png">
+<!-- Bibliothèques cartographiques (ne pas modifier) -->
+<link rel="stylesheet" href="lib/leaflet/leaflet.css">
+<link rel="stylesheet" href="lib/markercluster/MarkerCluster.css">
+<!-- Apparence -->
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header>
+  <div class="logo" id="uLogoBox"><span>D</span></div>
+  <div>
+    <h1><b id="uSigle">DCPJ</b> <span>·</span> Cartographie géospatiale de l'insécurité</h1>
+    <p id="uSub">DCPJ – Direction Centrale de la Police Judiciaire · Police Nationale d'Haïti</p>
+  </div>
+  <div class="hdr-right">
+    <button class="cmdbtn" id="bCmd" title="Écran tactique plein écran (Échap pour sortir)"><span class="mini-radar"></span>MODE COMMANDEMENT</button>
+    <div class="clock" id="clock"></div>
+    <div class="conf">Usage interne · Confidentiel</div>
+  </div>
+</header>
+<main>
+<aside>
+  <div class="tabs">
+    <div class="tab on" data-t="dash">Synthèse</div>
+    <div class="tab" data-t="alerts">Alertes <span class="cnt" id="cA">0</span></div>
+    <div class="tab" data-t="foyers">Gangs <span class="cnt" id="cF">0</span></div>
+    <div class="tab" data-t="zones">Zones <span class="cnt" id="cZ">0</span></div>
+    <div class="tab" data-t="anal">Analyse</div>
+    <div class="tab" data-t="new">+ Alerte</div>
+    <div class="tab" data-t="param" title="Paramètres" style="flex:.45">⚙</div>
+  </div>
+
+  <!-- TABLEAU DE BORD -->
+  <div class="pane on" id="p-dash">
+    <h2 class="sec">Situation</h2>
+    <div class="kpis">
+      <div class="kpi"><b id="kTot">0</b><span>alertes enregistrées</span></div>
+      <div class="kpi"><b id="k24">0</b><span>dans les dernières 24 h</span></div>
+      <div class="kpi alert"><b id="kCrit">0</b><span>critiques ou élevées non traitées</span></div>
+      <div class="kpi alert"><b id="kProx">0</b><span>à moins de 5 km d'un foyer de gang</span></div>
+      <div class="kpi alert"><b id="kZR">0</b><span>zones rouges délimitées</span></div>
+      <div class="kpi alert"><b id="kHS">0</b><span>foyers de violence détectés (30 j)</span></div>
+    </div>
+    <h2 class="sec">Alertes par catégorie</h2>
+    <div class="bars" id="byCat"></div>
+    <h2 class="sec">Alertes par département</h2>
+    <div class="bars" id="byDep"></div>
+    <h2 class="sec">Foyers de gangs par département</h2>
+    <div class="bars" id="byDepF"></div>
+    <h2 class="sec">Données</h2>
+    <div class="row-btns">
+      <button class="btn" id="bExpCsv">⬇ Exporter alertes (Excel/CSV)</button>
+      <button class="btn" id="bExpJson">⬇ Sauvegarde complète</button>
+      <button class="btn" id="bExpGeo">⬇ Export SIG (GeoJSON)</button>
+      <button class="btn" id="bImp">⬆ Importer</button>
+      <button class="btn" onclick="doPrint()">🖨 Imprimer</button>
+      <input type="file" id="fImp" accept=".json,.csv,.txt" hidden>
+    </div>
+    <div class="row-btns" style="margin-top:8px">
+      <button class="btn sm" id="bDemo">Charger une démonstration</button>
+      <button class="btn sm danger" id="bDemoDel">Retirer les données de démo</button>
+    </div>
+    <p class="hint">Les données restent sur cet ordinateur, dans ce navigateur. Faites régulièrement une <b>sauvegarde complète</b> : c'est aussi ce fichier qu'un collègue peut importer pour voir les mêmes alertes.
+    L'import CSV accepte les colonnes : <i>titre; categorie; gravite; date; latitude; longitude; localite; source; lien; description; statut</i>.</p>
+  </div>
+
+  <!-- ALERTES -->
+  <div class="pane" id="p-alerts">
+    <input type="search" id="q" placeholder="Rechercher (titre, lieu, description)…">
+    <div class="filters" id="catChips"></div>
+    <div class="sel3">
+      <select id="fGrav"><option value="">Toute gravité</option></select>
+      <select id="fStat"><option value="">Tout statut</option></select>
+      <select id="fPer">
+        <option value="">Toute période</option><option value="1">24 heures</option>
+        <option value="7">7 jours</option><option value="30">30 jours</option>
+      </select>
+    </div>
+    <div style="margin-top:6px"><select id="fDep"><option value="">Tous les départements</option></select></div>
+    <div class="meta" id="nRes" style="margin-top:8px"></div>
+    <div id="alertList"></div>
+  </div>
+
+  <!-- FOYERS -->
+  <div class="pane" id="p-foyers">
+    <div class="row-btns"><button class="btn gold" id="bNewF">+ Ajouter un foyer de gang</button></div>
+    <div id="fForm" style="display:none;margin-top:10px" class="locbox">
+      <label class="f">Zone / quartier *</label><input type="text" id="ffZone" placeholder="ex. Carrefour Thalès / Milot">
+      <label class="f">Chef(s) de file</label><input type="text" id="ffChef" placeholder="Nom, alias, téléphone…">
+      <label class="f">Membres connus</label><input type="text" id="ffMem">
+      <label class="f">Activités</label><textarea id="ffAct"></textarea>
+      <label class="f">Types d'activité</label><div class="filters" id="ffCats"></div>
+      <div class="grid2">
+        <div><label class="f">Rayon d'influence (km)</label><input type="number" id="ffRad" value="1.5" min="0.2" step="0.1"></div>
+        <div><label class="f">Source</label><input type="text" id="ffSrc" placeholder="ex. Rapport SDPJ"></div>
+      </div>
+      <label class="f">Position *</label>
+      <div class="row-btns"><button class="btn" id="ffPick">📍 Cliquer sur la carte</button></div>
+      <input type="search" id="ffPlace" list="places" placeholder="…ou taper une localité" style="margin-top:6px">
+      <div class="pos" id="ffPos" style="font-size:12px;margin-top:6px;color:var(--navy2);font-weight:600"></div>
+      <div class="row-btns" style="margin-top:10px"><button class="btn pri" id="ffSave">Enregistrer le foyer</button><button class="btn" id="ffCancel">Annuler</button></div>
+    </div>
+    <div class="filters" id="fDepChips" style="margin-top:12px"></div>
+    <div id="foyerList"></div>
+  </div>
+
+  <!-- ZONES D'INSÉCURITÉ -->
+  <div class="pane" id="p-zones">
+    <div class="row-btns"><button class="btn gold" id="bDraw">✏ Délimiter une zone d'insécurité</button></div>
+    <p class="hint">Cliquez sur la carte pour poser les sommets de la zone, puis « Terminer » (ou double-clic). Au moins 3 points.</p>
+    <div id="zForm" style="display:none" class="locbox">
+      <label class="f">Nom de la zone *</label><input type="text" id="zName" placeholder="ex. Axe Distrou – Haut-du-Cap">
+      <div class="grid2">
+        <div><label class="f">Niveau *</label><select id="zLevel"></select></div>
+        <div><label class="f">Type</label><select id="zType"></select></div>
+      </div>
+      <label class="f">Description / consignes</label><textarea id="zDesc" placeholder="Groupes présents, horaires à risque, consignes pour les patrouilles…"></textarea>
+      <div class="grid2">
+        <div><label class="f">Source</label><input type="text" id="zSrc" placeholder="ex. SDPJ/Nord"></div>
+        <div><label class="f">Date d'évaluation</label><input type="date" id="zDate"></div>
+      </div>
+      <div class="pos" id="zInfo"></div>
+      <div class="row-btns" style="margin-top:10px"><button class="btn pri" id="zSave">Enregistrer la zone</button><button class="btn" id="zCancel">Annuler</button></div>
+    </div>
+    <div class="filters" id="zChips" style="margin-top:10px"></div>
+    <div id="zoneList"></div>
+  </div>
+
+  <!-- ANALYSE -->
+  <div class="pane" id="p-anal">
+    <h2 class="sec">Paramètres d'analyse</h2>
+    <div class="params">
+      <div><label>Période</label><select id="aPer"><option value="7">7 jours</option><option value="30" selected>30 jours</option><option value="90">90 jours</option><option value="0">Tout</option></select></div>
+      <div><label>Rayon de regroupement</label><select id="aEps"><option value="1">1 km</option><option value="2" selected>2 km</option><option value="3">3 km</option><option value="5">5 km</option></select></div>
+      <div><label>Alertes minimum</label><select id="aMin"><option>2</option><option selected>3</option><option>4</option><option>5</option></select></div>
+    </div>
+    <h2 class="sec">Indice d'insécurité par département</h2>
+    <table class="idx" id="idxTable"></table>
+    <p class="hint">Indice relatif (100 = département le plus touché sur la période). Il combine les alertes pondérées par gravité (faible 1 · moyenne 2 · élevée 3 · critique 5), les foyers de gangs (×4) et les zones délimitées (rouge ×6 · orange ×3 · jaune ×1). Les fausses alertes sont exclues.</p>
+    <h2 class="sec">Foyers de violence détectés</h2>
+    <div id="hsList"></div>
+    <p class="hint">Un foyer de violence est détecté quand au moins <b id="hMin">3</b> alertes se trouvent à moins de <b id="hEps">2</b> km les unes des autres sur la période (méthode de regroupement spatial DBSCAN). La tendance compare les 7 derniers jours aux 7 jours précédents.</p>
+  </div>
+
+  <!-- PARAMÈTRES -->
+  <div class="pane" id="p-param">
+    <h2 class="sec">Identité de l'unité</h2>
+    <div class="grid2"><div><label class="f">Sigle</label><input type="text" id="sSigle"></div><div><label class="f">Institution</label><input type="text" id="sInst"></div></div>
+    <label class="f">Nom complet</label><input type="text" id="sNom">
+    <label class="f">Mention de confidentialité (bandeaux et SITREP)</label><input type="text" id="sClass">
+    <h2 class="sec">Logo</h2>
+    <div style="display:flex;gap:12px;align-items:center">
+      <div class="logoprev" id="sLogoPrev">Aucun logo</div>
+      <div class="row-btns" style="flex-direction:column;align-items:flex-start">
+        <button class="btn" id="sLogoBtn">🖼 Choisir le logo…</button>
+        <button class="btn danger sm" id="sLogoDel">Retirer le logo</button>
+        <input type="file" id="sLogoFile" accept="image/png,image/jpeg,image/svg+xml,image/webp" hidden>
+      </div>
+    </div>
+    <p class="hint">PNG avec fond transparent conseillé. Vous pouvez aussi placer le fichier <b>logo-dcpj.png</b> dans le dossier <b>images</b> du logiciel : il sera utilisé automatiquement.</p>
+    <h2 class="sec">Couleurs</h2>
+    <div class="grid2"><div><label class="f">Couleur principale</label><input type="color" id="sCol1"></div><div><label class="f">Couleur d'accent</label><input type="color" id="sCol2"></div></div>
+    <h2 class="sec">Analyse</h2>
+    <label class="f">Distance « proche d'un foyer de gang » (km)</label><input type="number" id="sProx" min="0.5" max="50" step="0.5">
+    <div class="row-btns" style="margin-top:16px"><button class="btn pri" id="sSave">Enregistrer les paramètres</button><button class="btn" id="sReset">Valeurs d'origine</button></div>
+    <h2 class="sec">À propos</h2>
+    <p class="hint">Cartographie géospatiale de l'insécurité – DCPJ · version <b id="sVer"></b><br>
+    Pour modifier le logiciel (catégories, couleurs, foyers, textes…), lisez le fichier <b>LISEZ-MOI.md</b> livré avec le logiciel : chaque fichier y est expliqué.</p>
+  </div>
+
+  <!-- NOUVELLE ALERTE -->
+  <div class="pane" id="p-new">
+    <label class="f">Titre de l'alerte *</label>
+    <input type="text" id="nTitle" placeholder="ex. Publication montrant des armes à feu">
+    <div class="grid2">
+      <div><label class="f">Catégorie *</label><select id="nCat"></select></div>
+      <div><label class="f">Gravité *</label><select id="nGrav"></select></div>
+    </div>
+    <div class="grid2">
+      <div><label class="f">Date et heure</label><input type="datetime-local" id="nDate"></div>
+      <div><label class="f">Source</label><select id="nSrc"></select></div>
+    </div>
+    <label class="f">Lien ou référence</label>
+    <input type="text" id="nLink" placeholder="URL de la publication, n° d'appel, PV…">
+    <label class="f">Description</label>
+    <textarea id="nDesc" placeholder="Ce qui a été signalé, personnes ou comptes concernés…"></textarea>
+    <label class="f">Localisation *</label>
+    <div class="locbox">
+      <div class="row-btns">
+        <button class="btn" id="nPick">📍 Cliquer sur la carte</button>
+        <button class="btn" id="nGps">🛰 Ma position</button>
+      </div>
+      <input type="search" id="nPlace" list="places" placeholder="…ou taper une commune / localité" style="margin-top:8px">
+      <div class="grid2" style="margin-top:6px">
+        <input type="text" id="nLat" placeholder="Latitude (ex. 19.7578)">
+        <input type="text" id="nLon" placeholder="Longitude (ex. -72.2042)">
+      </div>
+      <div class="pos" id="nPos"></div>
+      <label class="f">Précision</label>
+      <select id="nPrec"><option value="exacte">Exacte (point précis)</option><option value="approx">Approximative (commune / quartier)</option></select>
+    </div>
+    <div class="row-btns" style="margin-top:14px">
+      <button class="btn pri" id="nSave">Enregistrer l'alerte</button>
+      <button class="btn" id="nReset">Effacer</button>
+    </div>
+    <p class="hint">Le département est détecté automatiquement d'après la position. Le logiciel calcule aussi la distance au foyer de gang le plus proche.</p>
+  </div>
+</aside>
+<div id="map"><div class="pickbar" id="pickbar"><span id="pickTxt">📍 Cliquez sur la carte pour placer le point</span> <button id="pickDone">Terminer</button><button id="pickCancel">Annuler</button></div></div>
+</main>
+<datalist id="places"></datalist>
+<pre id="sitrepPrint" style="display:none"></pre>
+<div id="cmd">
+  <div class="c-class">CONFIDENTIEL · USAGE INTERNE · NE PAS DIFFUSER</div>
+  <div class="c-top">
+    <div class="c-logo" id="cLogo"><span>D</span></div>
+    <div class="c-title"><b id="cTitleT">DCPJ · CENTRE DE COMMANDEMENT</b><span id="cSubT">OPÉRATIONNEL · DCPJ · POLICE NATIONALE D'HAÏTI</span></div>
+    <div class="c-clocks">
+      <div class="c-clk"><small>GDH ZULU</small><b id="cZulu">—</b></div>
+      <div class="c-clk"><small>HEURE LOCALE · HAÏTI</small><b id="cLocal">—</b></div>
+      <div class="c-threat"><div><small>NIVEAU DE MENACE</small><b id="cThreatL">—</b></div><div class="seg" id="cThreatS"><i></i><i></i><i></i><i></i><i></i></div></div>
+    </div>
+    <div class="c-btns">
+      <button class="c-btn" id="cTour">▶ PRÉSENTATION</button>
+      <button class="c-btn on" id="cSweepBtn" title="Balayage radar sur la carte">◴ RADAR</button>
+      <button class="c-btn" id="cRings">⊕ ANNEAUX</button>
+      <button class="c-btn" id="cBase">◎ SATELLITE</button>
+      <button class="c-btn" id="cSit">▤ SITREP</button>
+      <button class="c-btn" id="cFull">⛶</button>
+      <button class="c-btn x" id="cExit">✕ QUITTER</button>
+    </div>
+  </div>
+  <div class="c-panel c-left">
+    <div class="c-h">SITUATION GÉNÉRALE</div>
+    <div class="c-kpis">
+      <div class="c-kpi a"><b id="ck24">0</b><small>Alertes 24 h</small></div>
+      <div class="c-kpi"><b id="ck7">0</b><small>Alertes 7 jours</small></div>
+      <div class="c-kpi r"><b id="ckCrit">0</b><small>Critiques actives</small></div>
+      <div class="c-kpi r"><b id="ckHS">0</b><small>Foyers de violence</small></div>
+      <div class="c-kpi r"><b id="ckGA">0</b><small>Groupes armés connus</small></div>
+      <div class="c-kpi a"><b id="ckZR">0</b><small>Zones rouges</small></div>
+    </div>
+    <div class="c-h">FIL DES ALERTES <span class="live">● EN DIRECT</span></div>
+    <div class="c-feed" id="cFeed"></div>
+  </div>
+  <div id="cmap">
+    <div class="c-sweep" id="cSweep"><div class="beam"></div></div>
+    <div class="c-hud"><div class="scan"></div><i class="cn tl"></i><i class="cn tr"></i><i class="cn bl"></i><i class="cn br"></i></div>
+    <div class="c-read" id="cRead">MGRS —</div>
+    <div class="c-cap" id="cCap"></div>
+  </div>
+  <div class="c-panel r c-right">
+    <div class="c-h">RADAR NATIONAL <span class="raz" id="rAz">AZ 000°</span></div>
+    <div class="radar-box"><canvas id="radar"></canvas></div>
+    <div class="radar-read"><span>CIBLES <b id="rT">0</b></span><span>HOSTILES <b id="rH" style="color:#ff4545">0</b></span><span>À VÉRIFIER <b id="rU" style="color:#ffd23f">0</b></span></div>
+    <div class="c-h">MENACE PAR DÉPARTEMENT</div>
+    <div id="cDep"></div>
+    <div class="c-h">FOYERS DE VIOLENCE ACTIFS (30 J)</div>
+    <div class="c-list" id="cHS"></div>
+    <div class="c-h">ZONES ROUGES</div>
+    <div class="c-list" id="cZR"></div>
+    <div class="c-h">SYMBOLOGIE</div>
+    <div id="cLeg" style="font:11px/1.9 Consolas,monospace;color:#bfe0ef"></div>
+  </div>
+  <div class="c-tick"><span class="lbl">FLASH</span><div style="overflow:hidden;flex:1"><span class="tr" id="cTick"></span></div></div>
+  <div class="c-class b">CONFIDENTIEL · USAGE INTERNE · NE PAS DIFFUSER</div>
+  <div class="c-modal" id="cModal"><div class="box">
+    <div class="hd"><span>▤ RAPPORT DE SITUATION (SITREP)</span>
+      <button class="c-btn" id="sCopy">COPIER</button><button class="c-btn" id="sDl">TÉLÉCHARGER</button><button class="c-btn" id="sPrint">IMPRIMER</button><button class="c-btn x" id="sClose">FERMER</button></div>
+    <pre id="sText"></pre></div></div>
+</div>
+<div class="toast" id="toast"></div>
+<div class="cf-modal" id="cfModal"><div class="cf-box"><p id="cfMsg"></p><div class="row-btns" style="justify-content:flex-end"><button class="btn" id="cfNo">Annuler</button><button class="btn pri" id="cfOk">Confirmer</button></div></div></div>
+
+<!-- Bibliothèques -->
+<script src="lib/leaflet/leaflet.js"></script>
+<script src="lib/markercluster/leaflet.markercluster.js"></script>
+<script src="lib/heat/leaflet-heat.js"></script>
+<!-- Données -->
+<script src="data/departements.js"></script>
+<script src="data/localites.js"></script>
+<script src="data/foyers.js"></script>
+<!-- Application -->
+<script src="js/config.js"></script>
+<script src="js/app.js"></script>
+<script src="js/commandement.js"></script>
+<script src="js/demarrage.js"></script>
+</body>
+</html>
