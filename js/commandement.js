@@ -85,6 +85,7 @@ function renderCmd(){if(!CM||!$("cmd").classList.contains("on"))return;try{radar
   $("cHS").innerHTML=hs.map(h=>`<div class="it" onclick="cFly(${h.lat},${h.lon},13)"><b style="color:#ff6b6b">${h.id}</b> <b>${esc((h.place||"").toUpperCase())}</b> ${h.trend>0?'<span style="color:#ff4545">▲</span>':h.trend<0?'<span style="color:#3dff8a">▼</span>':'<span style="color:#7fa7bf">■</span>'}
     <small>${h.n} ALERTES · SCORE ${h.score} · ${toMGRS(h.lat,h.lon,4)}</small></div>`).join("")||`<div style="font:11px Consolas,monospace;color:#6f93a8">AUCUN FOYER AU-DESSUS DU SEUIL</div>`;
   // groupes armés
+  try{cmdBases();}catch(e){}
   CM.gangs.clearLayers();DB.foyers.forEach(f=>{L.circle([f.lat,f.lon],{radius:(f.rad||1.2)*1000,color:"#ff4545",weight:.8,opacity:.5,fill:false,dashArray:"3 4",interactive:false}).addTo(CM.gangs);
     L.marker([f.lat,f.lon],{icon:L.divIcon({className:"",html:symSVG("hostile","#ff4545","GA",30),iconSize:[30,30],iconAnchor:[15,15]})}).bindPopup(()=>foyerPopup(f)+`<div class="m" style="margin-top:6px">MGRS ${toMGRS(f.lat,f.lon,5)}</div>`,{maxWidth:340})
       .bindTooltip(esc((f.zone||"").split("/")[0].trim().toUpperCase()),{permanent:CM.map.getZoom()>=11,direction:"right",offset:[14,0],className:"sym-lbl"}).addTo(CM.gangs);});
@@ -158,6 +159,7 @@ function radarData(){
   RAD.outline=[];DEPTS_GEO.features.forEach(f=>{const g=f.geometry;(g.type==="Polygon"?[g.coordinates]:g.coordinates).forEach(p=>RAD.outline.push(p[0].map(c=>radarProj(c[1],c[0]))));});
   const old=new Map(RAD.blips.map(b=>[b.id,b.lit]));RAD.blips=[];
   DB.alerts.filter(a=>a.stat!=="fausse").forEach(a=>{const [k,c]=symFor(a);RAD.blips.push({id:a.id,p:radarProj(a.lat,a.lon),col:c,kind:k,crit:a.grav==="critique",lit:old.get(a.id)||0});});
+  (DB.bases||[]).forEach(b=>RAD.blips.push({id:b.id,p:radarProj(b.lat,b.lon),col:"#4ea3ff",kind:"friend",crit:false,lit:old.get(b.id)||0}));
   DB.foyers.forEach(f=>RAD.blips.push({id:f.id,p:radarProj(f.lat,f.lon),col:"#ff4545",kind:"hostile",crit:false,lit:old.get(f.id)||0}));
   RAD.blips.forEach(b=>{b.ang=(Math.atan2(b.p[1],b.p[0])+Math.PI*2.5)%(Math.PI*2);});   // 0 = nord, sens horaire
   $("rT").textContent=RAD.blips.length;$("rH").textContent=RAD.blips.filter(b=>b.kind==="hostile").length;$("rU").textContent=RAD.blips.filter(b=>b.kind==="unknown").length;}
@@ -190,7 +192,7 @@ function radarFrame(now){const cv=$("radar");if(!cv||!$("cmd").classList.contain
   const prev=RAD.prevAng??ang;RAD.blips.forEach(b=>{const crossed=prev<=ang?(b.ang>prev&&b.ang<=ang):(b.ang>prev||b.ang<=ang);if(crossed)b.lit=now;
     const age=now-b.lit,al=b.lit?Math.max(0,1-age/(RADAR_TOUR*.9)):0,X=cx+b.p[0]*R,Y=cy+b.p[1]*R;if(Math.hypot(b.p[0],b.p[1])>1)return;
     x.globalAlpha=.18+al*.82;x.fillStyle=b.col;x.shadowColor=b.col;x.shadowBlur=10*al;
-    if(b.kind==="hostile"){x.beginPath();x.moveTo(X,Y-4);x.lineTo(X+4,Y);x.lineTo(X,Y+4);x.lineTo(X-4,Y);x.closePath();x.fill();}else{x.beginPath();x.arc(X,Y,2.8,0,7);x.fill();}
+    if(b.kind==="friend"){x.fillRect(X-4,Y-3,8,6);}else if(b.kind==="hostile"){x.beginPath();x.moveTo(X,Y-4);x.lineTo(X+4,Y);x.lineTo(X,Y+4);x.lineTo(X-4,Y);x.closePath();x.fill();}else{x.beginPath();x.arc(X,Y,2.8,0,7);x.fill();}
     if(b.crit&&al>.2){x.strokeStyle=b.col;x.lineWidth=1;x.beginPath();x.arc(X,Y,4+(1-al)*12,0,7);x.stroke();}});
   x.globalAlpha=1;x.shadowBlur=0;RAD.prevAng=ang;x.restore();
   // bord

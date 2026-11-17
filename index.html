@@ -136,6 +136,19 @@
     </div>
     <div class="filters" id="zChips" style="margin-top:10px"></div>
     <div id="zoneList"></div>
+    <h2 class="sec" style="margin-top:24px">Points de départ (commissariats, bases)</h2>
+    <div class="row-btns"><button class="btn" id="bNewB">+ Ajouter un point de départ</button></div>
+    <div id="bForm" style="display:none;margin-top:10px" class="locbox">
+      <label class="f">Nom *</label><input type="text" id="bName" placeholder="ex. Commissariat de Milot">
+      <label class="f">Type</label><select id="bType"></select>
+      <label class="f">Position *</label>
+      <div class="row-btns"><button class="btn" id="bPick">📍 Cliquer sur la carte</button></div>
+      <input type="search" id="bPlace" list="places" placeholder="…ou taper une localité" style="margin-top:6px">
+      <div class="pos" id="bPos" style="font-size:12px;margin-top:6px;color:var(--navy2);font-weight:600"></div>
+      <div class="row-btns" style="margin-top:10px"><button class="btn pri" id="bSave">Enregistrer</button><button class="btn" id="bCancel">Annuler</button></div>
+    </div>
+    <div id="baseList"></div>
+    <p class="hint">Les points de départ servent à calculer distances et temps de trajet dans la <b>fiche opération</b> de chaque zone. Ils apparaissent en bleu (forces amies) sur la carte, en 3D et dans le Mode Commandement.</p>
   </div>
 
   <!-- ANALYSE -->
@@ -296,6 +309,7 @@
 <script src="js/config.js"></script>
 <script src="js/app.js"></script>
 <script src="js/commandement.js"></script>
+<script src="js/operations.js"></script>
 <script src="js/demarrage.js"></script>
 </body>
 </html>

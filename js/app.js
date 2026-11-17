@@ -73,7 +73,9 @@ const NOBASE = HOSTED;   // dans le lien claude.ai, les images externes (fonds d
 const bases = NOBASE ? {"Fond hors ligne": L.layerGroup()} : {
   "Plan": L.tileLayer(ESRI+"World_Street_Map/MapServer/tile/{z}/{y}/{x}",{maxZoom:19,attribution:"Fond © Esri, HERE, Garmin, OpenStreetMap"}),
   "Gris clair": L.tileLayer(ESRI+"Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",{maxZoom:16,attribution:"Fond © Esri"}),
-  "Satellite": L.tileLayer(ESRI+"World_Imagery/MapServer/tile/{z}/{y}/{x}",{maxZoom:19,attribution:"Imagerie © Esri, Maxar, Earthstar"})
+  "Satellite": L.tileLayer(ESRI+"World_Imagery/MapServer/tile/{z}/{y}/{x}",{maxZoom:19,attribution:"Imagerie © Esri, Maxar, Earthstar"}),
+  "Relief": L.tileLayer(ESRI+"World_Shaded_Relief/MapServer/tile/{z}/{y}/{x}",{maxZoom:18,maxNativeZoom:13,attribution:"Relief © Esri"}),
+  "Topographique": L.tileLayer(ESRI+"World_Topo_Map/MapServer/tile/{z}/{y}/{x}",{maxZoom:19,attribution:"Topo © Esri, HERE, Garmin, OpenStreetMap"})
 };
 bases[Object.keys(bases)[0]].addTo(map);
 if (NOBASE) document.getElementById("map").classList.add("nobase");
@@ -116,7 +118,7 @@ const hotLayer=L.layerGroup().addTo(map);
 let IDX={};
 const idxLayer=L.geoJSON(DEPTS_GEO,{pane:"idxPane",style:f=>{const v=(IDX[f.properties.name]||{}).idx||0;return {color:"#fff",weight:1.2,fillColor:idxCls(v).color,fillOpacity:.62};},
   onEachFeature:(f,l)=>l.bindTooltip(()=>{const d=IDX[f.properties.name]||{idx:0};return `<b>${esc(f.properties.name)}</b><br>Indice : ${d.idx} – ${idxCls(d.idx).label}`;},{sticky:true})});
-L.control.layers(bases,{"Alertes":alertLayer,"Carte de chaleur des alertes":heat,"Foyers de gangs armés":foyerLayer,"Zones d'insécurité":zoneLayer,"Foyers de violence (détection auto)":hotLayer,"Indice d'insécurité par département":idxLayer,"Limites des départements":depLayer},{collapsed:true}).addTo(map);
+const LAYERS=L.control.layers(bases,{"Alertes":alertLayer,"Carte de chaleur des alertes":heat,"Foyers de gangs armés":foyerLayer,"Zones d'insécurité":zoneLayer,"Foyers de violence (détection auto)":hotLayer,"Indice d'insécurité par département":idxLayer,"Limites des départements":depLayer},{collapsed:true}).addTo(map);
 map.on("overlayadd overlayremove",e=>{ if(e.layer===depLayer){ if(e.type==="overlayadd") updLabels(); else map.removeLayer(depLabels);} if(e.layer===idxLayer) renderLegend(); if(e.layer===zoneLayer) updZoneLabels(); });
 L.control.scale({imperial:false}).addTo(map);
 const legend=L.control({position:"bottomright"});
@@ -154,7 +156,7 @@ function foyerPopup(f){return `<div class="pp"><h3>${esc(f.zone)}</h3><div class
   <div class="badges">${(f.cats||[]).map(k=>`<span class="bdg" style="background:#7f0000">${esc(FCATS[k]||k)}</span>`).join("")}</div>
   <dl><dt>Chef(s) de file</dt><dd>${esc(f.chef||"—")}</dd><dt>Membres connus</dt><dd>${esc(f.membres||"—")}</dd><dt>Activités</dt><dd>${esc(f.act||"—")}</dd>
   <dt>Alertes à moins de ${PROX_KM} km</dt><dd>${DB.alerts.filter(a=>km(a.lat,a.lon,f.lat,f.lon)<PROX_KM).length}</dd></dl>
-  <div class="act"><button class="btn sm danger" onclick="delFoyer('${f.id}')">Retirer ce foyer</button></div></div>`;}
+  <div class="act"><button class="btn sm pri" onclick="open3DFoyer('${f.id}')">⛰ Vue 3D</button><button class="btn sm danger" onclick="delFoyer('${f.id}')">Retirer ce foyer</button></div></div>`;}
 
 function passes(a){
   if(F.cats.size&&!F.cats.has(a.cat))return false;
@@ -221,7 +223,7 @@ function renderDash(){
   $("kZR").textContent=DB.zones.filter(z=>z.level==="rouge").length;
   $("kHS").textContent=detectHotspots(30,+$("aEps").value||2,+$("aMin").value||3).length;
 }
-function renderAll(){try{updateDemoBadge();}catch(e){}setTimeout(()=>{try{renderCmd();}catch(e){}},0);DB.zones.forEach(z=>{if(!z.dept){const c=polyCentroid(z.coords);z.dept=deptOf(c[0],c[1]);}});renderZones();renderAnalysis();if(typeof fillPlaces==="function")fillPlaces();DB.foyers.forEach(f=>{if(!f.dept)f.dept=deptOf(f.lat,f.lon);});renderMap();renderList();renderFoyers();renderDash();}
+function renderAll(){if(typeof renderBases==="function")try{renderBases();}catch(e){}try{updateDemoBadge();}catch(e){}setTimeout(()=>{try{renderCmd();}catch(e){}},0);DB.zones.forEach(z=>{if(!z.dept){const c=polyCentroid(z.coords);z.dept=deptOf(c[0],c[1]);}});renderZones();renderAnalysis();if(typeof fillPlaces==="function")fillPlaces();DB.foyers.forEach(f=>{if(!f.dept)f.dept=deptOf(f.lat,f.lon);});renderMap();renderList();renderFoyers();renderDash();}
 
 /* ===================== Actions ===================== */
 function highlight(id){document.querySelectorAll(".card.active").forEach(e=>e.classList.remove("active"));const c=$("c-"+id);if(c){c.classList.add("active");c.scrollIntoView({block:"nearest",behavior:"smooth"});}}
@@ -258,7 +260,8 @@ function placeLookup(v){v=(v||"").trim();if(!v)return null;
 let pick=null,tmp=null;
 const N={lat:null,lon:null,place:""}, FF={lat:null,lon:null};
 function setTmp(lat,lon){if(tmp)map.removeLayer(tmp);tmp=L.marker([lat,lon],{draggable:true,icon:L.divIcon({className:"",html:'<div class="tmp"></div>',iconSize:[22,22],iconAnchor:[11,11]}),zIndexOffset:1000}).addTo(map);
-  tmp.on("dragend",()=>{const ll=tmp.getLatLng();(tmp._for==="foyer"?setFPos:setNPos)(ll.lat,ll.lng,true);});}
+  tmp.on("dragend",()=>{const ll=tmp.getLatLng();pickDispatch(tmp._for==="foyer"?"foyer":tmp._for==="base"?"base":"alert",ll.lat,ll.lng);});}
+function pickDispatch(k,lat,lng){if(k==="alert")setNPos(lat,lng,true);else if(k==="base")setBPos(lat,lng,true);else setFPos(lat,lng,true);}
 function setNPos(lat,lon,fromMap,name){N.lat=+lat;N.lon=+lon;$("nLat").value=N.lat.toFixed(5);$("nLon").value=N.lon.toFixed(5);
   const dep=deptOf(N.lat,N.lon);const np=nearestPlace(N.lat,N.lon);
   if(name){N.place=name;} else if(fromMap||!N.place){N.place=np?(np.d<1.5?np.p[0]:`près de ${np.p[0]} (${np.d.toFixed(1)} km)`):"";}
@@ -270,7 +273,7 @@ function startPick(kind){pick=kind;$("map").classList.add("picking");$("pickbar"
 function stopPick(){pick=null;$("map").classList.remove("picking");$("pickbar").classList.remove("on","draw");$("pickTxt").textContent="📍 Cliquez sur la carte pour placer le point";map.doubleClickZoom.enable();}
 $("pickCancel").onclick=()=>{const wasDraw=pick==="zone";stopPick();if(wasDraw)clearDraft();};
 $("pickDone").onclick=()=>finishDraw();
-map.on("click",e=>{if(!pick)return;if(pick==="zone"){addVertex(e.latlng);return;}const k=pick;stopPick();k==="alert"?setNPos(e.latlng.lat,e.latlng.lng,true):setFPos(e.latlng.lat,e.latlng.lng,true);});
+map.on("click",e=>{if(!pick)return;if(pick==="zone"){addVertex(e.latlng);return;}const k=pick;stopPick();pickDispatch(k,e.latlng.lat,e.latlng.lng);});
 $("nPick").onclick=()=>startPick("alert");
 $("ffPick").onclick=()=>startPick("foyer");
 $("nGps").onclick=()=>{if(!navigator.geolocation)return toast("Géolocalisation non disponible sur cet appareil");toast("Recherche de votre position…");
@@ -319,6 +322,7 @@ $("bExpCsv").onclick=()=>{const q=v=>{v=String(v??"");return /[;"\n\r]/.test(v)?
 $("bExpJson").onclick=()=>{download(`${CFG.sigle}_sauvegarde_${stamp()}.json`,JSON.stringify({app:"DCPJ-cartographie",version:1,exported:new Date().toISOString(),...DB},null,1),"application/json");toast("Sauvegarde téléchargée");};
 $("bExpGeo").onclick=()=>{const feats=[];
   DB.zones.forEach(z=>feats.push({type:"Feature",properties:{couche:"zone_insecurite",id:z.id,nom:z.name,niveau:ZLEV[z.level].short,type:z.type,description:z.desc,source:z.src,date:z.date,departement:z.dept,superficie_km2:+polyAreaKm2(z.coords).toFixed(2)},geometry:{type:"Polygon",coordinates:[z.coords.concat([z.coords[0]]).map(c=>[c[1],c[0]])]}}));
+  (DB.bases||[]).forEach(b=>feats.push({type:"Feature",properties:{couche:"point_depart",id:b.id,nom:b.name,type:BASE_TYPES[b.type]?.label,departement:b.dept},geometry:{type:"Point",coordinates:[b.lon,b.lat]}}));
   DB.foyers.forEach(f=>feats.push({type:"Feature",properties:{couche:"foyer_gang",id:f.id,zone:f.zone,chef:f.chef,membres:f.membres,activites:f.act,departement:f.dept,rayon_km:f.rad,source:f.src},geometry:{type:"Point",coordinates:[f.lon,f.lat]}}));
   DB.alerts.forEach(a=>feats.push({type:"Feature",properties:{couche:"alerte",id:a.id,titre:a.title,categorie:CATS[a.cat]?.short,gravite:GRAV[a.grav]?.label,statut:STAT[a.stat]?.label,date:a.date,localite:a.place,departement:a.dept,source:a.src},geometry:{type:"Point",coordinates:[a.lon,a.lat]}}));
   HOTS.forEach(h=>feats.push({type:"Feature",properties:{couche:"foyer_violence_detecte",id:h.id,alertes:h.n,score:h.score,localite:h.place,departement:h.dept,rayon_km:+h.r.toFixed(2)},geometry:{type:"Point",coordinates:[h.lon,h.lat]}}));
@@ -334,6 +338,7 @@ $("fImp").onchange=async e=>{const file=e.target.files[0];e.target.value="";if(!
     if(/^\s*[{\[]/.test(txt)){const d=JSON.parse(txt);const al=Array.isArray(d)?d:d.alerts||[];let na=0,nf=0;
       const ids=new Set(DB.alerts.map(a=>a.id));al.forEach(a=>{if(a&&isFinite(a.lat)&&isFinite(a.lon)&&!ids.has(a.id)){if(!a.id)a.id=nextId();if(!a.dept)a.dept=deptOf(a.lat,a.lon);DB.alerts.push(a);na++;}});
       if(d.foyers){const fids=new Set(DB.foyers.map(f=>f.id));d.foyers.forEach(f=>{if(f&&isFinite(f.lat)&&!fids.has(f.id)){DB.foyers.push(f);nf++;}});}
+      if(Array.isArray(d.bases)){const bids=new Set(DB.bases.map(b=>b.id));d.bases.forEach(b=>{if(b&&isFinite(b.lat)&&!bids.has(b.id))DB.bases.push(b);});}
       if(Array.isArray(d.zones)){const zids=new Set(DB.zones.map(z=>z.id));d.zones.forEach(z=>{if(z&&Array.isArray(z.coords)&&z.coords.length>=3&&!zids.has(z.id)){DB.zones.push(z);}});}
       if(d.seq&&d.seq>DB.seq)DB.seq=d.seq;save();renderAll();toast(`${na} alerte(s) et ${nf} foyer(s) importés`);return;}
     const rows=parseCSV(txt);const h=rows.shift().map(norm);const col=n=>h.findIndex(x=>n.some(y=>x===y||x.startsWith(y)));
@@ -359,10 +364,10 @@ function addDemoFoyers(){if(DB.foyers.some(f=>f.demo))return;
   D.forEach(([pl,l,cats,rad],i)=>{const r=placeLookup(pl);if(!r)return;const lat=r.lat+.012*Math.cos(i),lon=r.lon+.012*Math.sin(i);
     DB.foyers.push({id:"F-DEMO-"+l,zone:"[DÉMO] Groupe armé fictif "+l+" – "+r.name,lat,lon,dept:deptOf(lat,lon),chef:"— (donnée fictive)",membres:"— (donnée fictive)",
       act:"Exemple fictif utilisé pour la démonstration du logiciel.",cats,rad,src:"Démonstration",approx:true,demo:true});});}
-function updateDemoBadge(){const on=DB.alerts.some(a=>a.demo)||DB.zones.some(z=>z.demo)||DB.foyers.some(f=>f.demo);
+function updateDemoBadge(){const on=DB.alerts.some(a=>a.demo)||DB.zones.some(z=>z.demo)||DB.foyers.some(f=>f.demo)||(DB.bases||[]).some(b=>b.demo);
   const p=document.getElementById("demoPill");if(p)p.style.display=on?"":"none";
   document.querySelectorAll(".c-class").forEach(e=>e.textContent=on?"DÉMONSTRATION · DONNÉES FICTIVES · "+CFG.classification:CFG.classification);}
-$("bDemo").onclick=()=>{addDemoFoyers();
+$("bDemo").onclick=()=>{addDemoFoyers();if(typeof addDemoBases==="function")addDemoBases();
   const S=[["Publication avec fusils d'assaut exhibés","armes","elevee","Cap-Haitien"],["Signalement d'enlèvement sur la RN1","enlev","critique","Limbe"],["Vente de stupéfiants annoncée sur WhatsApp","drogue","moyenne","Port-au-Prince"],
     ["Vidéo d'un gang revendiquant une attaque","gang","critique","Croix des Bouquets"],["Appel : coups de feu près du marché","armes","elevee","Saint-Marc"],["Agression sexuelle signalée","viol","elevee","Gonaives"],
     ["Barrage armé, taxation des passants","gang","elevee","Milot"],["Menaces publiées contre des habitants","gang","moyenne","Limonade"],["Annonce de vente d'armes","armes","critique","Petion-Ville"],
@@ -381,7 +386,7 @@ $("bDemo").onclick=()=>{addDemoFoyers();
   Z.forEach(([nm,lv,ty,pl,s])=>{const r=placeLookup(pl);if(!r)return;const coords=[];for(let i=0;i<7;i++){const an=i/7*2*Math.PI,k=s*(.75+Math.random()*.5);coords.push([+(r.lat+k*Math.sin(an)).toFixed(5),+(r.lon+k*1.1*Math.cos(an)).toFixed(5)]);}
     const c=polyCentroid(coords);DB.zones.push({id:"Z-"+Date.now().toString(36).toUpperCase()+Math.floor(Math.random()*1e3),name:nm,level:lv,type:ty,desc:"Zone fictive créée pour tester l'application.",src:"Démonstration",date:new Date().toISOString().slice(0,10),coords,dept:deptOf(c[0],c[1]),demo:true});});
   save();renderAll();map.fitBounds(HT_BOUNDS);toast(n+" alertes et 3 zones de démonstration ajoutées (marquées DÉMO)");};
-$("bDemoDel").onclick=()=>{const n=DB.alerts.filter(a=>a.demo).length,nz=DB.zones.filter(z=>z.demo).length;DB.alerts=DB.alerts.filter(a=>!a.demo);DB.zones=DB.zones.filter(z=>!z.demo);DB.foyers=DB.foyers.filter(f=>!f.demo);save();renderAll();toast(`${n} alerte(s) et ${nz} zone(s) de démo retirées`);};
+$("bDemoDel").onclick=()=>{const n=DB.alerts.filter(a=>a.demo).length,nz=DB.zones.filter(z=>z.demo).length;DB.alerts=DB.alerts.filter(a=>!a.demo);DB.zones=DB.zones.filter(z=>!z.demo);DB.foyers=DB.foyers.filter(f=>!f.demo);DB.bases=(DB.bases||[]).filter(b=>!b.demo);save();renderAll();toast(`${n} alerte(s) et ${nz} zone(s) de démo retirées`);};
 
 /* ===================== Zones d'insécurité ===================== */
 let draft={pts:[],shape:null,vx:L.layerGroup().addTo(map)};
@@ -406,11 +411,12 @@ $("zSave").onclick=()=>{const name=$("zName").value.trim();if(!name)return toast
   const c=polyCentroid(draft.pts);const z={id:"Z-"+Date.now().toString(36).toUpperCase(),name,level:$("zLevel").value,type:$("zType").value,desc:$("zDesc").value.trim(),src:$("zSrc").value.trim(),date:$("zDate").value,coords:draft.pts.slice(),dept:deptOf(c[0],c[1]),created:new Date().toISOString()};
   DB.zones.push(z);save();clearDraft();["zName","zDesc","zSrc"].forEach(i=>$(i).value="");$("zForm").style.display="none";renderAll();focusZone(z.id);toast("Zone enregistrée");};
 function zonePopup(z){const L_=ZLEV[z.level];const inside=DB.alerts.filter(a=>inPoly(a.lat,a.lon,z.coords));const fo=DB.foyers.filter(f=>inPoly(f.lat,f.lon,z.coords));
-  return `<div class="pp"><h3>${esc(z.name)}</h3><div class="m">${esc(z.dept||"?")} · ${polyAreaKm2(z.coords).toFixed(1)} km² · évaluée le ${esc(z.date||"—")}</div>
+  return `<div class="pp"><h3>${esc(z.name)}</h3><div class="m">${esc(z.dept||"?")} · ${polyAreaKm2(z.coords).toFixed(2)} km² · périmètre ${zonePerimKm(z.coords).toFixed(1)} km · évaluée le ${esc(z.date||"—")}</div>
   <div class="badges"><span class="bdg" style="background:${L_.color};color:${z.level==="jaune"?"#3a2d00":"#fff"}">${L_.label}</span>${z.demo?'<span class="bdg out">DÉMO</span>':""}</div>
   <dl><dt>Type</dt><dd>${esc(z.type||"—")}</dd>${z.desc?`<dt>Description / consignes</dt><dd>${esc(z.desc)}</dd>`:""}
   <dt>À l'intérieur</dt><dd>${inside.length} alerte(s) (${inside.filter(a=>a.grav==="critique").length} critique(s)) · ${fo.length} foyer(s) de gang</dd>
   <dt>Source</dt><dd>${esc(z.src||"—")}</dd></dl>
+  <div class="act" style="flex-wrap:wrap"><button class="btn sm pri" onclick="open3DZone('${z.id}')">⛰ Vue 3D</button><button class="btn sm" onclick="openOpSheet('${z.id}')">📋 Fiche opération</button></div>
   <div class="act"><select onchange="setZoneLevel('${z.id}',this.value)">${Object.entries(ZLEV).map(([k,v])=>`<option value="${k}" ${k===z.level?"selected":""}>${v.short}</option>`).join("")}</select>
   <button class="btn sm danger" onclick="delZone('${z.id}')">Supprimer</button></div></div>`;}
 let zSel="";
@@ -418,7 +424,7 @@ function renderZones(){
   zoneLayer.clearLayers();zoneLabels.clearLayers();
   DB.zones.slice().sort((a,b)=>LORD[b.level]-LORD[a.level]).forEach(z=>{const col=ZLEV[z.level].color;
     const pg=L.polygon(z.coords,{pane:"zonesPane",color:col,weight:2,opacity:.9,fillColor:col,fillOpacity:z.level==="rouge"?.28:.22,zoneId:z.id}).bindPopup(()=>zonePopup(z),{maxWidth:340});
-    pg.on("click",e=>{if(pick){L.DomEvent.stop(e);pg.closePopup();if(pick==="zone")addVertex(e.latlng);else{const k=pick;stopPick();k==="alert"?setNPos(e.latlng.lat,e.latlng.lng,true):setFPos(e.latlng.lat,e.latlng.lng,true);}}});
+    pg.on("click",e=>{if(pick){L.DomEvent.stop(e);pg.closePopup();if(pick==="zone")addVertex(e.latlng);else{const k=pick;stopPick();pickDispatch(k,e.latlng.lat,e.latlng.lng);}}});
     pg.addTo(zoneLayer);
     const c=polyCentroid(z.coords);L.tooltip({permanent:true,direction:"center",className:"zlabel",opacity:.95}).setLatLng(c).setContent(esc(z.name.replace(/^\[DÉMO\]\s*/,""))).addTo(zoneLabels);});
   updZoneLabels();
@@ -428,7 +434,7 @@ function renderZones(){
   $("zoneList").innerHTML=list.length?list.map(z=>{const n=DB.alerts.filter(a=>inPoly(a.lat,a.lon,z.coords)).length;
     return `<div class="card" style="border-left-color:${ZLEV[z.level].color}" onclick="focusZone('${z.id}')"><h4><span class="t">${esc(z.name)}</span></h4>
     <div class="meta">${esc(z.dept||"?")} · ${esc(z.type||"")} · ${polyAreaKm2(z.coords).toFixed(1)} km²</div>
-    <div class="badges"><span class="bdg" style="background:${ZLEV[z.level].color};color:${z.level==="jaune"?"#3a2d00":"#fff"}">${ZLEV[z.level].short}</span><span class="bdg out">${n} alerte(s) à l'intérieur</span>${z.demo?'<span class="bdg out">DÉMO</span>':""}</div></div>`;}).join("")
+    <div class="badges"><span class="bdg" style="background:${ZLEV[z.level].color};color:${z.level==="jaune"?"#3a2d00":"#fff"}">${ZLEV[z.level].short}</span><span class="bdg out">${n} alerte(s) à l'intérieur</span>${z.demo?'<span class="bdg out">DÉMO</span>':""}</div><div class="row-btns" style="margin-top:7px"><button class="btn sm" onclick="event.stopPropagation();open3DZone('${z.id}')">⛰ Vue 3D</button><button class="btn sm" onclick="event.stopPropagation();openOpSheet('${z.id}')">📋 Fiche opération</button></div></div>`;}).join("")
     :`<div class="empty">Aucune zone d'insécurité délimitée.<br>Cliquez sur <b>« Délimiter une zone »</b> puis dessinez-la sur la carte.</div>`;}
 window.setZSel=k=>{zSel=k;renderZones();};
 window.focusZone=id=>{const z=DB.zones.find(x=>x.id===id);if(!z)return;if(!map.hasLayer(zoneLayer))zoneLayer.addTo(map);map.flyToBounds(L.latLngBounds(z.coords).pad(.3),{duration:.8});
